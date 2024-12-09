@@ -102,6 +102,8 @@ class Tokenizer:
         self.stem_to_sid = {}  # stem -> stemmed id, e.g. "appl" -> 0
         # word -> {stemmed, unstemmed} id, e.g. "apple" -> 0 (appl) or "apple" -> 2 (apple)
         self.word_to_id = {}
+        self.id_to_word = {}
+        self.sid_to_stem = {}
 
     def save_vocab(self, save_dir: str, vocab_name: str = "vocab.tokenizer.json"):
         """
@@ -126,6 +128,8 @@ class Tokenizer:
                 "word_to_stem": self.word_to_stem,
                 "stem_to_sid": self.stem_to_sid,
                 "word_to_id": self.word_to_id,
+                "id_to_word": self.id_to_word,
+                "sid_to_stem": self.sid_to_stem,
             }
             f.write(json_functions.dumps(d, ensure_ascii=False))
         
@@ -155,6 +159,8 @@ class Tokenizer:
             self.word_to_stem = d["word_to_stem"]
             self.stem_to_sid = d["stem_to_sid"]
             self.word_to_id = d["word_to_id"]
+            self.id_to_word = d["id_to_word"]
+            self.sid_to_stem = d["sid_to_stem"]
     
     def save_stopwords(self, save_dir: str, stopwords_name: str = "stopwords.tokenizer.json"):
         """
@@ -256,12 +262,15 @@ class Tokenizer:
                     if update_vocab != "never" and stem in self.stem_to_sid:
                         sid = self.stem_to_sid[stem]
                         self.word_to_id[word] = sid
+                        self.id_to_word[sid] = word
                         doc_ids.append(sid)
 
                     elif update_vocab is True:
                         sid = len(self.stem_to_sid)
                         self.stem_to_sid[stem] = sid
+                        self.sid_to_stem[sid] = stem
                         self.word_to_id[word] = sid
+                        self.id_to_word[sid] = word
                         doc_ids.append(sid)
                 else:
                     # if we are not using a stemmer, we can just update the word_to_id
@@ -269,18 +278,21 @@ class Tokenizer:
                     if update_vocab is True and word not in self.word_to_id:
                         wid = len(self.word_to_id)
                         self.word_to_id[word] = wid
+                        self.id_to_word[wid] = word
                         doc_ids.append(wid)
 
             if len(doc_ids) == 0 and allow_empty is True:
                 if update_vocab is True and "" not in self.word_to_id:
                     idx = max(self.word_to_id.values(), default=-1) + 1
                     self.word_to_id[""] = idx
+                    self.id_to_word[idx] = ""
                     
                     if using_stemmer:
                         if "" not in self.word_to_stem:
                             self.word_to_stem[""] = ""
                         if "" not in self.stem_to_sid:
                             self.stem_to_sid[""] = idx
+                            self.sid_to_stem[idx] = ""
                 
                 # get the ID for the empty string
                 if "" in self.word_to_id:
@@ -403,6 +415,15 @@ class Tokenizer:
             # if we are using a stemmer, we return the stem_to_sid dictionary,
             # which we will use to map the stemmed words to the stemmed IDs
             return self.stem_to_sid
+        
+    def get_reverse_vocab_dict(self) -> Dict[str, Any]:
+        if self.stemmer is None:
+            # if we are not using a stemmer, we return the id_to_word dictionary
+            # which maps the word IDs to the words
+            return self.id_to_word
+        # if we are using a stemmer, we return the sid_to_stem dictionary,
+        # which we will use to map the stemmed IDs to the stemmed words
+        return self.sid_to_stem
 
     def to_tokenized_tuple(self, docs: List[List[int]]) -> Tokenized:
         """
@@ -429,8 +450,7 @@ class Tokenizer:
         List[List[str]]
             A list of lists of strings, each string being a word or a stemmed word if a stemmer is used.
         """
-        vocab = self.get_vocab_dict()
-        reverse_vocab = {v: k for k, v in vocab.items()}
+        reverse_vocab = self.get_reverse_vocab_dict()
         return [[reverse_vocab[token_id] for token_id in doc] for doc in docs]
 
 
